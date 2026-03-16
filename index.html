@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>A-TE-RU 管理画面 - QRコード・画面確認</title>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif; background: #fff; color: #333; font-size: 14px; }
@@ -513,6 +514,36 @@ body { font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-ser
     gap: 12px;
     justify-content: center;
 }
+
+/* ===== Color Picker for QR Label ===== */
+.color-presets { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.color-preset {
+    width: 28px; height: 28px; border-radius: 4px; border: 2px solid #ccc;
+    cursor: pointer; display: inline-block; transition: border-color 0.2s;
+}
+.color-preset:hover, .color-preset.selected { border-color: #333; box-shadow: 0 0 0 2px rgba(0,0,0,0.2); }
+.color-custom-input { width: 36px; height: 28px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; padding: 0; }
+.qr-option-row select { font-size: 13px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; }
+
+/* ===== Bulk Download ===== */
+.btn-bulk-download {
+    background: #ff6f00; color: #fff; border-color: #e65100;
+    font-weight: bold; padding: 6px 14px; font-size: 12px;
+}
+.btn-bulk-download:hover { background: #e65100; }
+.bulk-progress-overlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center;
+}
+.bulk-progress-overlay.active { display: flex; }
+.bulk-progress-box {
+    background: #fff; border-radius: 12px; padding: 32px 40px; text-align: center; min-width: 320px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.bulk-progress-box h3 { margin-bottom: 16px; color: #333; }
+.bulk-progress-bar { width: 100%; height: 24px; background: #e0e0e0; border-radius: 12px; overflow: hidden; margin-bottom: 12px; }
+.bulk-progress-fill { height: 100%; background: linear-gradient(90deg, #e91e63, #ff6f00); border-radius: 12px; transition: width 0.3s; width: 0%; }
+.bulk-progress-text { font-size: 14px; color: #666; }
 
 /* ===== Preview Modal ===== */
 .modal-preview { max-width: 520px; }
@@ -1046,6 +1077,7 @@ body { font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-ser
             <input type="number" id="quickSearchNo" placeholder="台番号を入力" style="width:120px; font-size:14px; padding:8px 10px;">
             <button class="btn btn-qr" onclick="quickQr()">&#9641; QR作成</button>
             <button class="btn btn-preview" onclick="quickPreview()">&#128241; 画面確認</button>
+            <button class="btn btn-bulk-download" onclick="openBulkDownloadModal()">&#11015; 全台QRダウンロード</button>
             <span id="quickSearchError" style="color:#d32f2f; font-size:12px; font-weight:bold; display:none;"></span>
         </div>
 
@@ -1063,6 +1095,7 @@ body { font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-ser
             </select>
             <button class="btn btn-search" onclick="applyFilter()">検索</button>
             <button class="btn" onclick="resetFilter()">リセット</button>
+            <button class="btn btn-bulk-download" onclick="applyFilter(); openBulkDownloadModal('filtered')" style="margin-left:8px;">&#11015; 範囲QRダウンロード</button>
         </div>
 
         <!-- Table -->
@@ -1116,7 +1149,27 @@ body { font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-ser
                     <span class="option-label">中央に台番号:</span>
                     <label><input type="checkbox" id="optCenterNo" checked onchange="toggleCenterLabel()"> あり</label>
                 </div>
-                <h4 style="margin-top:12px;">印刷オプション</h4>
+                <div class="qr-option-row">
+                    <span class="option-label">台番号ラベル色:</span>
+                    <div class="color-presets">
+                        <span class="color-preset selected" style="background:#e91e63" data-color="#e91e63" onclick="selectLabelColor(this)"></span>
+                        <span class="color-preset" style="background:#d32f2f" data-color="#d32f2f" onclick="selectLabelColor(this)"></span>
+                        <span class="color-preset" style="background:#2e7d32" data-color="#2e7d32" onclick="selectLabelColor(this)"></span>
+                        <span class="color-preset" style="background:#1565c0" data-color="#1565c0" onclick="selectLabelColor(this)"></span>
+                        <span class="color-preset" style="background:#e65100" data-color="#e65100" onclick="selectLabelColor(this)"></span>
+                        <span class="color-preset" style="background:#6a1b9a" data-color="#6a1b9a" onclick="selectLabelColor(this)"></span>
+                        <span class="color-preset" style="background:#333333" data-color="#333333" onclick="selectLabelColor(this)"></span>
+                        <input type="color" class="color-custom-input" id="customLabelColor" value="#e91e63" onchange="selectCustomColor(this)" title="カスタムカラー">
+                    </div>
+                </div>
+                <h4 style="margin-top:12px;">ダウンロード・印刷オプション</h4>
+                <div class="qr-option-row">
+                    <span class="option-label">ファイル形式:</span>
+                    <select id="optFileFormat">
+                        <option value="png">PNG</option>
+                        <option value="jpg">JPG</option>
+                    </select>
+                </div>
                 <div class="qr-option-row">
                     <span class="option-label">台番号の表示:</span>
                     <label><input type="checkbox" id="optShowNo" checked> あり</label>
@@ -1127,7 +1180,7 @@ body { font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-ser
                 </div>
             </div>
             <div class="qr-actions">
-                <button class="btn btn-download" onclick="downloadQr()">&#11015; ダウンロード (PNG)</button>
+                <button class="btn btn-download" onclick="downloadQr()">&#11015; ダウンロード</button>
                 <button class="btn btn-print" onclick="printQr()">&#128424; 印刷</button>
             </div>
         </div>
@@ -1161,6 +1214,74 @@ body { font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-ser
                 <span>※ iframe内で各ページへの遷移・操作が可能です</span>
             </div>
         </div>
+    </div>
+</div>
+
+<!-- ===== Bulk Download Modal ===== -->
+<div class="modal-overlay" id="bulkDownloadModal">
+    <div class="modal" style="max-width:500px;">
+        <div class="modal-header">
+            <h3>全台QRコード一括ダウンロード</h3>
+            <button class="modal-close" onclick="closeBulkDownloadModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="qr-options">
+                <h4>一括ダウンロード設定</h4>
+                <div class="qr-option-row">
+                    <span class="option-label">対象:</span>
+                    <select id="bulkTarget">
+                        <option value="all">全台</option>
+                        <option value="filtered">現在の絞り込み結果</option>
+                    </select>
+                </div>
+                <div class="qr-option-row">
+                    <span class="option-label">ファイル形式:</span>
+                    <select id="bulkFileFormat">
+                        <option value="png">PNG</option>
+                        <option value="jpg">JPG</option>
+                    </select>
+                </div>
+                <div class="qr-option-row">
+                    <span class="option-label">中央に台番号:</span>
+                    <label><input type="checkbox" id="bulkCenterNo" checked> あり</label>
+                </div>
+                <div class="qr-option-row">
+                    <span class="option-label">台番号ラベル色:</span>
+                    <div class="color-presets">
+                        <span class="color-preset selected" style="background:#e91e63" data-color="#e91e63" onclick="selectBulkLabelColor(this)"></span>
+                        <span class="color-preset" style="background:#d32f2f" data-color="#d32f2f" onclick="selectBulkLabelColor(this)"></span>
+                        <span class="color-preset" style="background:#2e7d32" data-color="#2e7d32" onclick="selectBulkLabelColor(this)"></span>
+                        <span class="color-preset" style="background:#1565c0" data-color="#1565c0" onclick="selectBulkLabelColor(this)"></span>
+                        <span class="color-preset" style="background:#e65100" data-color="#e65100" onclick="selectBulkLabelColor(this)"></span>
+                        <span class="color-preset" style="background:#6a1b9a" data-color="#6a1b9a" onclick="selectBulkLabelColor(this)"></span>
+                        <span class="color-preset" style="background:#333333" data-color="#333333" onclick="selectBulkLabelColor(this)"></span>
+                        <input type="color" class="color-custom-input" id="bulkCustomLabelColor" value="#e91e63" onchange="selectBulkCustomColor(this)" title="カスタムカラー">
+                    </div>
+                </div>
+                <div class="qr-option-row">
+                    <span class="option-label">下部に台番号:</span>
+                    <label><input type="checkbox" id="bulkShowNo" checked> あり</label>
+                </div>
+                <div class="qr-option-row">
+                    <span class="option-label">下部に機種名:</span>
+                    <label><input type="checkbox" id="bulkShowName"> あり</label>
+                </div>
+            </div>
+            <div id="bulkFilterDesc" style="text-align:center; font-size:12px; color:#c2185b; margin:6px 0; display:none; font-weight:bold;"></div>
+            <div id="bulkTargetInfo" style="text-align:center; font-size:13px; color:#666; margin:8px 0;">対象台数: <strong id="bulkCount">35</strong> 台</div>
+            <div class="qr-actions">
+                <button class="btn btn-bulk-download" onclick="startBulkDownload()" id="btnStartBulk" style="padding:10px 30px; font-size:14px;">&#11015; ZIPダウンロード開始</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Bulk Progress Overlay ===== -->
+<div class="bulk-progress-overlay" id="bulkProgressOverlay">
+    <div class="bulk-progress-box">
+        <h3>QRコード生成中...</h3>
+        <div class="bulk-progress-bar"><div class="bulk-progress-fill" id="bulkProgressFill"></div></div>
+        <div class="bulk-progress-text" id="bulkProgressText">0 / 0</div>
     </div>
 </div>
 
@@ -1292,6 +1413,37 @@ function renderTable() {
     document.getElementById('tableInfo').textContent = '表示: ' + filteredMachines.length + ' 台 / 全 ' + machines.length + ' 台';
 }
 
+// ===== QR Label Color =====
+var currentLabelColor = '#e91e63';
+var bulkLabelColor = '#e91e63';
+
+function selectLabelColor(el) {
+    document.querySelectorAll('#qrModal .color-preset').forEach(p => p.classList.remove('selected'));
+    el.classList.add('selected');
+    currentLabelColor = el.dataset.color;
+    document.getElementById('customLabelColor').value = currentLabelColor;
+    updateCenterLabelColor();
+}
+function selectCustomColor(input) {
+    document.querySelectorAll('#qrModal .color-preset').forEach(p => p.classList.remove('selected'));
+    currentLabelColor = input.value;
+    updateCenterLabelColor();
+}
+function updateCenterLabelColor() {
+    var label = document.querySelector('#qrcode .qr-center-label');
+    if (label) label.style.color = currentLabelColor;
+}
+function selectBulkLabelColor(el) {
+    document.querySelectorAll('#bulkDownloadModal .color-preset').forEach(p => p.classList.remove('selected'));
+    el.classList.add('selected');
+    bulkLabelColor = el.dataset.color;
+    document.getElementById('bulkCustomLabelColor').value = bulkLabelColor;
+}
+function selectBulkCustomColor(input) {
+    document.querySelectorAll('#bulkDownloadModal .color-preset').forEach(p => p.classList.remove('selected'));
+    bulkLabelColor = input.value;
+}
+
 // ===== QR Code Modal =====
 function getMachineByNo(no) {
     return machines.find(m => m.machineNo === no);
@@ -1307,6 +1459,7 @@ function openQrModal(machineNo) {
     document.getElementById('optCenterNo').checked = true;
     document.getElementById('optShowNo').checked = true;
     document.getElementById('optShowName').checked = true;
+    document.getElementById('optFileFormat').value = 'png';
 
     const qrEl = document.getElementById('qrcode');
     qrEl.innerHTML = '';
@@ -1330,7 +1483,12 @@ function addCenterLabel(qrEl, machineNo) {
     if (existing) existing.remove();
     var label = document.createElement('div');
     label.className = 'qr-center-label';
-    label.textContent = '台番号 ' + machineNo;
+    label.textContent = String(machineNo).padStart(4, '0');
+    label.style.color = '#fff';
+    label.style.background = currentLabelColor;
+    label.style.padding = '4px 10px';
+    label.style.fontSize = '16px';
+    label.style.boxShadow = 'none';
     qrEl.appendChild(label);
 }
 
@@ -1350,16 +1508,7 @@ function closeQrModal() {
     document.getElementById('qrModal').classList.remove('active');
 }
 
-function downloadQr() {
-    const machineNo = document.getElementById('qrMachineNo').textContent;
-    const machineName = document.getElementById('qrMachineName').textContent;
-    const showCenterNo = document.getElementById('optCenterNo').checked;
-    const showNo = document.getElementById('optShowNo').checked;
-    const showName = document.getElementById('optShowName').checked;
-
-    const qrCanvas = document.querySelector('#qrcode canvas');
-    const qrImg = document.querySelector('#qrcode img');
-
+function generateQrCanvas(sourceEl, machineNo, machineName, showCenterNo, showNo, showName, labelColor) {
     const dlCanvas = document.createElement('canvas');
     const size = 1024;
     const padding = 80;
@@ -1374,30 +1523,30 @@ function downloadQr() {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, dlCanvas.width, dlCanvas.height);
 
-    const sourceEl = qrCanvas || qrImg;
     if (sourceEl) {
         ctx.drawImage(sourceEl, padding, padding, size, size);
     }
 
-    // Draw center label on QR code (if enabled)
     if (showCenterNo) {
         var centerX = padding + size / 2;
         var centerY = padding + size / 2;
-        var labelText = '台番号 ' + machineNo;
+        var labelText = String(machineNo).padStart(4, '0');
         ctx.font = 'bold 56px sans-serif';
         var textWidth = ctx.measureText(labelText).width;
-        var labelPadH = 40, labelPadV = 20;
+        var labelPadH = 30, labelPadV = 16;
         var labelW = textWidth + labelPadH * 2;
         var labelH = 56 + labelPadV * 2;
-        ctx.fillStyle = '#ffffff';
+        // Draw colored background rectangle
+        ctx.fillStyle = labelColor || '#e91e63';
         ctx.beginPath();
-        var r = 16;
+        var r = 8;
         var lx = centerX - labelW/2, ly = centerY - labelH/2;
         ctx.moveTo(lx+r,ly); ctx.lineTo(lx+labelW-r,ly); ctx.quadraticCurveTo(lx+labelW,ly,lx+labelW,ly+r);
         ctx.lineTo(lx+labelW,ly+labelH-r); ctx.quadraticCurveTo(lx+labelW,ly+labelH,lx+labelW-r,ly+labelH);
         ctx.lineTo(lx+r,ly+labelH); ctx.quadraticCurveTo(lx,ly+labelH,lx,ly+labelH-r);
         ctx.lineTo(lx,ly+r); ctx.quadraticCurveTo(lx,ly,lx+r,ly); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = '#e91e63';
+        // White text on colored background
+        ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.font = 'bold 56px sans-serif';
         ctx.fillText(labelText, centerX, centerY);
@@ -1417,9 +1566,28 @@ function downloadQr() {
         ctx.fillText(machineName, dlCanvas.width / 2, textY);
     }
 
+    return dlCanvas;
+}
+
+function downloadQr() {
+    const machineNo = document.getElementById('qrMachineNo').textContent;
+    const machineName = document.getElementById('qrMachineName').textContent;
+    const showCenterNo = document.getElementById('optCenterNo').checked;
+    const showNo = document.getElementById('optShowNo').checked;
+    const showName = document.getElementById('optShowName').checked;
+    const fileFormat = document.getElementById('optFileFormat').value;
+
+    const qrCanvas = document.querySelector('#qrcode canvas');
+    const qrImg = document.querySelector('#qrcode img');
+    const sourceEl = qrCanvas || qrImg;
+
+    const dlCanvas = generateQrCanvas(sourceEl, machineNo, machineName, showCenterNo, showNo, showName, currentLabelColor);
+
     const link = document.createElement('a');
-    link.download = 'QR_台番号' + machineNo + '.png';
-    link.href = dlCanvas.toDataURL('image/png');
+    const ext = fileFormat === 'jpg' ? 'jpg' : 'png';
+    const mimeType = fileFormat === 'jpg' ? 'image/jpeg' : 'image/png';
+    link.download = 'QR_台番号' + machineNo + '.' + ext;
+    link.href = dlCanvas.toDataURL(mimeType, 0.95);
     link.click();
 }
 
@@ -1448,18 +1616,18 @@ function printQr() {
     // Draw center label on printed QR (if enabled)
     if (showCenterNo2) {
     var cx = size / 2, cy = size / 2;
-    var lt = '台番号 ' + machineNo;
+    var lt = String(machineNo).padStart(4, '0');
     ctx.font = 'bold 56px sans-serif';
     var tw = ctx.measureText(lt).width;
-    var pw = tw + 80, ph = 96;
-    ctx.fillStyle = '#ffffff';
+    var pw = tw + 60, ph = 88;
+    ctx.fillStyle = currentLabelColor;
     ctx.beginPath();
-    var rr = 16, rx = cx - pw/2, ry = cy - ph/2;
+    var rr = 8, rx = cx - pw/2, ry = cy - ph/2;
     ctx.moveTo(rx+rr,ry); ctx.lineTo(rx+pw-rr,ry); ctx.quadraticCurveTo(rx+pw,ry,rx+pw,ry+rr);
     ctx.lineTo(rx+pw,ry+ph-rr); ctx.quadraticCurveTo(rx+pw,ry+ph,rx+pw-rr,ry+ph);
     ctx.lineTo(rx+rr,ry+ph); ctx.quadraticCurveTo(rx,ry+ph,rx,ry+ph-rr);
     ctx.lineTo(rx,ry+rr); ctx.quadraticCurveTo(rx,ry,rx+rr,ry); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#e91e63';
+    ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(lt, cx, cy);
     }
@@ -1765,6 +1933,12 @@ function getQuickSearchNo() {
 }
 
 function quickQr() {
+    var val = document.getElementById('quickSearchNo').value.trim();
+    if (val === '') {
+        // 台番なし → 全台一括ダウンロードモーダルを開く
+        openBulkDownloadModal();
+        return;
+    }
     var no = getQuickSearchNo();
     if (no !== null) openQrModal(no);
 }
@@ -1802,6 +1976,133 @@ document.getElementById('qrModal').addEventListener('click', function(e) {
 document.getElementById('previewModal').addEventListener('click', function(e) {
     if (e.target === this) closePreviewModal();
 });
+document.getElementById('bulkDownloadModal').addEventListener('click', function(e) {
+    if (e.target === this) closeBulkDownloadModal();
+});
+
+// ===== Bulk Download =====
+function openBulkDownloadModal(defaultTarget) {
+    var allCount = machines.length;
+    var filtCount = filteredMachines.length;
+    var targetSel = document.getElementById('bulkTarget');
+
+    // フィルターから呼ばれた場合は「現在の絞り込み結果」をデフォルトに
+    if (defaultTarget === 'filtered') {
+        targetSel.value = 'filtered';
+        document.getElementById('bulkCount').textContent = filtCount;
+    } else {
+        targetSel.value = 'all';
+        document.getElementById('bulkCount').textContent = allCount;
+    }
+
+    // 絞り込み内容の説明を表示
+    var infoEl = document.getElementById('bulkFilterDesc');
+    if (filtCount < allCount) {
+        var fromVal = document.getElementById('filterFrom').value;
+        var toVal = document.getElementById('filterTo').value;
+        var typeVal = document.getElementById('filterType').value;
+        var desc = '絞り込み: ';
+        if (fromVal || toVal) desc += '台番号 ' + (fromVal || '?') + '〜' + (toVal || '?') + ' ';
+        if (typeVal !== 'all') desc += (typeVal === 'pachinko' ? 'パチンコ' : 'スロット');
+        desc += ' (' + filtCount + '台)';
+        infoEl.textContent = desc;
+        infoEl.style.display = 'block';
+    } else {
+        infoEl.style.display = 'none';
+    }
+
+    targetSel.onchange = function() {
+        document.getElementById('bulkCount').textContent = this.value === 'all' ? allCount : filtCount;
+    };
+    document.getElementById('bulkDownloadModal').classList.add('active');
+}
+function closeBulkDownloadModal() {
+    document.getElementById('bulkDownloadModal').classList.remove('active');
+}
+
+async function startBulkDownload() {
+    var target = document.getElementById('bulkTarget').value;
+    var targetMachines = target === 'all' ? machines : filteredMachines;
+    var fileFormat = document.getElementById('bulkFileFormat').value;
+    var showCenterNo = document.getElementById('bulkCenterNo').checked;
+    var showNo = document.getElementById('bulkShowNo').checked;
+    var showName = document.getElementById('bulkShowName').checked;
+    var labelColor = bulkLabelColor;
+    var ext = fileFormat === 'jpg' ? 'jpg' : 'png';
+    var mimeType = fileFormat === 'jpg' ? 'image/jpeg' : 'image/png';
+
+    closeBulkDownloadModal();
+
+    // Show progress
+    var overlay = document.getElementById('bulkProgressOverlay');
+    var fill = document.getElementById('bulkProgressFill');
+    var text = document.getElementById('bulkProgressText');
+    overlay.classList.add('active');
+    fill.style.width = '0%';
+    text.textContent = '0 / ' + targetMachines.length;
+
+    var zip = new JSZip();
+    var tempContainer = document.createElement('div');
+    tempContainer.style.cssText = 'position:absolute;left:-9999px;top:-9999px;';
+    document.body.appendChild(tempContainer);
+
+    for (var i = 0; i < targetMachines.length; i++) {
+        var m = targetMachines[i];
+        // Generate QR code offscreen
+        var qrDiv = document.createElement('div');
+        tempContainer.appendChild(qrDiv);
+        new QRCode(qrDiv, {
+            text: m.url,
+            width: 256,
+            height: 256,
+            correctLevel: QRCode.CorrectLevel.H
+        });
+
+        // Wait for QR to render
+        await new Promise(function(resolve) { setTimeout(resolve, 80); });
+
+        var sourceEl = qrDiv.querySelector('canvas') || qrDiv.querySelector('img');
+        var dlCanvas = generateQrCanvas(sourceEl, m.machineNo, m.name, showCenterNo, showNo, showName, labelColor);
+
+        // Convert to blob
+        var dataUrl = dlCanvas.toDataURL(mimeType, 0.95);
+        var base64 = dataUrl.split(',')[1];
+        var fileName = 'QR_台番号' + m.machineNo + '.' + ext;
+        zip.file(fileName, base64, { base64: true });
+
+        // Cleanup
+        tempContainer.removeChild(qrDiv);
+
+        // Update progress
+        var pct = Math.round(((i + 1) / targetMachines.length) * 100);
+        fill.style.width = pct + '%';
+        text.textContent = (i + 1) + ' / ' + targetMachines.length;
+    }
+
+    document.body.removeChild(tempContainer);
+
+    text.textContent = 'ZIP作成中...';
+    var content = await zip.generateAsync({ type: 'blob' });
+    var link = document.createElement('a');
+    link.href = URL.createObjectURL(content);
+    var zipName = 'QRコード一括_';
+    if (target === 'all') {
+        zipName += '全台';
+    } else {
+        var fromVal = document.getElementById('filterFrom').value;
+        var toVal = document.getElementById('filterTo').value;
+        if (fromVal || toVal) {
+            zipName += '台番号' + (fromVal || '') + '-' + (toVal || '') + '_' + targetMachines.length + '台';
+        } else {
+            zipName += '絞り込み_' + targetMachines.length + '台';
+        }
+    }
+    link.download = zipName + '.zip';
+    link.click();
+    URL.revokeObjectURL(link.href);
+
+    overlay.classList.remove('active');
+}
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         closeQrModal();
